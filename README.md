@@ -42,7 +42,9 @@ I will make it available on `pip`.
 - If the file has been downloaded before (with hash recorded), and if the
   latest downloaded file has different hash with the recorded one, and if the
   hash of current local file is different from the recorded hash, then save
-  the latest download in cache area and prompt the user to update manually.
+  the latest download in cache area and prompt the user to update manually
+  (strictly speaking there's no _prompt_, but a warning return code
+  `LOCAL_CHANGE_REMOTE_CHANGE`, as specified in `fkupdate.__doc__`)
 
 
 ## Motivation
