@@ -1,4 +1,3 @@
-# TODO Unfinished code -- well, almost finished
 """
 This module tries to tackle the use case where there is a potentially
 changing remote repository of files, and the user downloads the file to local
@@ -21,12 +20,14 @@ Instruction on globally used int return codes:
                                   not remotely available for some reason
 """
 
+import os
 import hashlib
 import shutil
 import json
 from urllib import request
 import urllib.error
-from typing import Optional, Dict
+import itertools
+from typing import Optional, Dict, Tuple, List
 
 
 # int return code used globally
@@ -59,7 +60,7 @@ def download(filename: str, url: str) -> Optional[str]:
         return None
 
 
-def attempt_update(localfile: str, orighash: Optional[str],
+def attempt_update(localfile: str, orig_hash: Optional[str],
                    latest_download: Optional[str],
                    algorithm: str) -> Tuple[int, Optional[str]]:
     """
@@ -68,19 +69,21 @@ def attempt_update(localfile: str, orighash: Optional[str],
     downloaded file. No actual file system operation will be performed.
 
     :param localfile: the local file path
-    :param orighash: the hash of the local file once it's downloaded; or None
+    :param orig_hash: the hash of the local file once it's downloaded; or None
            if the file has never been downloaded
     :param latest_download: the latest downloaded file; or None if the file
            cannot be downloaded for some reason
-    :param algorithm: the hash algorithm    
+    :param algorithm: the hash algorithm
     :return: the int return code; and the new hash if the return code is 0, or
              ``None`` if the return code is non-zero
     """
-    if (orighash, latest_download) == (None, None):
+    if (orig_hash, latest_download) == (None, None):
         return NO_LOCAL_NO_REMOTE, None
     if latest_download is None:
         return HAS_LOCAL_NO_REMOTE, None
     latest_hash = hash_of_file(latest_download, algorithm=algorithm)
+    if orig_hash is None:
+        return UPDATED, latest_hash
     if orig_hash == latest_hash:
         return NO_REMOTE_CHANGE, None
     if orig_hash == hash_of_file(localfile, algorithm=algorithm):
@@ -88,37 +91,77 @@ def attempt_update(localfile: str, orighash: Optional[str],
     return LOCAL_CHANGE_REMOTE_CHANGE, None
 
 
-def update(localfile: str, orighash: Optional[str],
+def update(localfile: str, orig_hash: Optional[str],
            latest_download: Optional[str],
-           algorithm: str) -> Union[int, str]:
+           algorithm: str) -> Tuple[int, Optional[str]]:
     """
     Update the local file if necessary in file system. This function will make
     an internal call to ``attempt_update``. When ``attempt_update`` returns a
-    string, i.e. the updated hash, ``localfile`` will be replaced by
-    ``latest_download`` and ``latest_download`` will be removed.
+    return code of ``UPDATED``, ``localfile`` will be replaced by
+    ``latest_download`` and ``latest_download`` will be removed. When the
+    returns code is ``NO_REMOTE_CHANGE``, the ``latest_download`` will be
+    removed.
 
     The parameters and the return are the same as that in ``attempt_update``.
     """
-    ret, update = attempt_update(localfile, orighash, latest_download, algorithm)
+    ret, dictupdates = attempt_update(localfile, orig_hash, latest_download, algorithm)
     if ret == UPDATED:
         os.replace(latest_download, localfile)
-    return ret, update
+    elif ret == NO_REMOTE_CHANGE:
+        os.remove(latest_download)
+    return ret, dictupdates
 
 
-def maintain_batch(basedir: str, cachedir: str, names: str,
-                   name2url: Dict[str, str], name2hash: Dict[str, str],
+# You may replace `itertools.starmap` in this function with `pool.starmap` for
+# concurrency, since clearly this is an IO-bounded task.
+def maintain_batch(basedir: str, cachedir: str,
+                   name_url: List[Tuple[str, str]], name2hash: Dict[str, str],
                    algorithm: str) -> Tuple[Dict[str, str], List[int]]:
     """
     Maintain a batch of files to be downloaded to the same local directory.
+    No argument will be changed in place. All arguments expecting a directory
+    assume the existence of directories.
+
+    Example usage::
+
+        .. code-block::
+
+            with open(cfgfile) as infile:
+                name2hash = json.load(infile)
+            updates, ret = maintain_batch(basedir, cachedir, name_url,
+                                          name2hash, algorithm)
+            name2hash.update(updates)
+            with open(cfgfile, 'w') as outfile:
+                json.dump(name2hash, outfile)
+
 
     :param basedir: the directory where the files to stay locally
     :param cachedir: the directory where to download the latest edition
     :param names: a list of base filenames to be managed
-    :param name2url: a dictionary mapping local base filename to URL
+    :param name_url: a list of tuples of (base filename, URL)
     :param name2hash: a dictionary mapping local base filename to the hash of
            it once it was downloaded
     :param algorithm: the hash algorithm used
     :return: a dictionary which can be used to update ``name2hash``, and a
-             list of int return codes for each file (according to ``names``)
+             list of int return codes for each file (according to the order of
+             ``name_url``)
     """
-    pass
+    if len(name_url) != len(name2hash):
+        raise ValueError()
+    # download the latest version to cachedir
+    latestfile_url = iter((os.path.join(cachedir, f), u) for f, u in name_url)
+    latestfiles = itertools.starmap(download, latestfile_url)
+    # order `name2hash` in terms of `name_url` into a list of tuples
+    name_hash = iter((f, name2hash[f]) for f, _ in name_url)
+    # prepare arguments for `update` function and call it
+    localfile_hash = iter((os.path.join(basedir, f), h) for f, h in name_hash)
+    args = iter((l, h, d, algorithm) for (l, h), d in zip(localfile_hash, latestfiles))
+    vals = list(itertools.starmap(update, args))  # evaluate here
+    assert len(vals) == len(name_url)
+    # collect return values
+    retcodes = list(r for r, _ in vals)
+    newhashes = iter(h for _, h in vals)
+    name_newhash = iter((f, h) for (f, _), h in zip(name_url, newhashes)
+                        if h is not None)
+    name2hash_updates = dict(name_newhash)
+    return retcodes, name2hash_updates

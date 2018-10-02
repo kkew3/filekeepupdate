@@ -30,7 +30,8 @@ I will make it available on `pip`.
 
 ## Mechanism
 
-- If the file has never downloaded from URL, download it.
+- If the file has never been downloaded from URL, download it and record the
+  hash.
 - If the file has been downloaded before (with hash recorded), and if the
   latest downloaded file has the same hash as the recorded one, remove the
   latest download.
@@ -61,4 +62,5 @@ FreeBSD, Ubuntu, etc.). There should be no extra package dependencies.
 
 ## Notice
 
-The code has not been tested thoroughly and probably won't ever be.
+Although there's certainly some basic tests, the code has not been tested
+_thoroughly_ and probably won't ever be.
