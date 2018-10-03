@@ -116,7 +116,7 @@ def update(localfile: str, orig_hash: Optional[str],
 # concurrency, since clearly this is an IO-bounded task.
 def maintain_batch(basedir: str, cachedir: str,
                    name_url: List[Tuple[str, str]], name2hash: Dict[str, str],
-                   algorithm: str) -> Tuple[Dict[str, str], List[int]]:
+                   algorithm: str) -> Tuple[List[int], Dict[str, str]]:
     """
     Maintain a batch of files to be downloaded to the same local directory.
     No argument will be changed in place. All arguments expecting a directory
@@ -128,7 +128,7 @@ def maintain_batch(basedir: str, cachedir: str,
 
             with open(cfgfile) as infile:
                 name2hash = json.load(infile)
-            updates, ret = maintain_batch(basedir, cachedir, name_url,
+            ret, updates = maintain_batch(basedir, cachedir, name_url,
                                           name2hash, algorithm)
             name2hash.update(updates)
             with open(cfgfile, 'w') as outfile:
@@ -142,9 +142,9 @@ def maintain_batch(basedir: str, cachedir: str,
     :param name2hash: a dictionary mapping local base filename to the hash of
            it once it was downloaded
     :param algorithm: the hash algorithm used
-    :return: a dictionary which can be used to update ``name2hash``, and a
-             list of int return codes for each file (according to the order of
-             ``name_url``)
+    :return: a list of int return codes for each file (according to the order
+             of ``name_url``), and a dictionary which can be used to update
+             ``name2hash``
     """
     if len(name_url) != len(name2hash):
         raise ValueError()
