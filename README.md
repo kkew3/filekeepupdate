@@ -66,3 +66,76 @@ FreeBSD, Ubuntu, etc.). There should be no extra package dependencies.
 
 Although there's certainly some basic tests, the code has not been tested
 _thoroughly_ and probably won't ever be.
+
+
+
+# fmgr
+
+This is a quite simple client software based on `fkupdate` currently being
+used by me. I put it up here in case anyone else has similar requirements.
+
+
+## Introduction
+
+> Copied from `fmgr.__doc__`
+
+A simple command line interface.
+
+If a directory contains `.name_url.json`, running this script under that
+directory will do batch maintenance according to the filenames and URLs on
+the JSON file. `updatehist_file`, `cachedir` will be created automatically.
+The hash algorithm will be `algorithm`.
+
+## Demo
+
+	$ # prepare a .name_url.json for demo
+	$ echo '[["fft.pdf", "http://www.cs.cmu.edu/afs/andrew/scs/cs/15-463/2001/pub/www/notes/fourier/fourier.pdf"]]' > .name_url.json
+	$ # or to make `fmgr.py` an executable and call it directly ...
+	$ python3 fmgr.py
+	$ ls
+	fft.pdf
+	$ ls -A
+	.cache  .downloads.json  fft.pdf  .name_url.json
+	$ ls -A .cache
+	$ cat .downloads.json
+	{"fft.pdf": "64fe6ff40fc4935b20a5f89195822a25868420404e0dc3692353166640d6b9af"}
+
+Now see how `fmgr.py` responses.
+
+Simulated situation 1:
+
+	$ # setup simulation
+	$ sed -i'.bak' 's/http/ttp/' .name_url.json
+	$ # response
+	$ python3 fmgr.py
+	fft.pdf: Not remotely available but found local copy; is the Internet connected? or is the URL changed?
+	$ # teardown simulation
+	$ mv .name_url.json{.bak,}
+
+Simulated situation 2:
+
+	$ # setup simulation -- no setup, just run `fmgr.py` again
+	$ python3 fmgr.py
+	$ # no output; everything is going well
+
+Simulated situation 3:
+
+	$ # setup simulation -- updated remotely
+	$ sed -i'.bak' 's|http://www.cs.cmu.edu/afs/andrew/scs/cs/15-463/2001/pub/www/note    s/fourier/fourier.pdf|http://www.wisdom.weizmann.ac.il/~naor/COURSE/fft-lecture.pdf|' .name_url.json
+	$ python3 fmgr.py
+	$ # no output; update the file silently
+	$ # teardown simulation
+	$ mv .name_url.json{.bak,}
+
+Simulated situation 4:
+
+	$ # setup simulation -- updated remotely and modified locally
+	$ sed -i'.bak' 's|http://www.cs.cmu.edu/afs/andrew/scs/cs/15-463/2001/pub/www/note    s/fourier/fourier.pdf|http://www.wisdom.weizmann.ac.il/~naor/COURSE/fft-lecture.pdf|' .name_url.json
+	$ dd if=/dev/zero bs=1 count=1 >> fft.pdf
+	1+0 records in
+	1+0 records out
+	1 byte copied, 7.5353e-05 s, 13.3 kB/s
+	$ python3 fmgr.py
+	fft.pdf: Update available under .cache but local copy has already been modified
+	$ ls .cache
+	fft.pdf
