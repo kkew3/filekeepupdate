@@ -56,7 +56,7 @@ def download(filename: str, url: str) -> Optional[str]:
             with open(filename, 'wb') as outfile:
                 shutil.copyfileobj(web, outfile)
         return filename
-    except urllib.error.HTTPError:
+    except (urllib.error.HTTPError, urllib.error.URLError):
         return None
 
 
@@ -147,7 +147,8 @@ def maintain_batch(basedir: str, cachedir: str,
              ``name2hash``
     """
     if len(name_url) != len(name2hash):
-        raise ValueError()
+        raise ValueError('length mismatch: name_url ({}) and name2hash ({})'
+                         .format(len(name_url), len(name2hash)))
     # download the latest version to cachedir
     latestfile_url = iter((os.path.join(cachedir, f), u) for f, u in name_url)
     latestfiles = itertools.starmap(download, latestfile_url)
